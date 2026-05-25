@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.upgrade-guardian</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>__BIN_PATH__</string>
+        <string>--kubeconfig</string>
+        <string>/Users/__USER__/.kube/config</string>
+        <string>--addr</string>
+        <string>127.0.0.1:8090</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/upgrade-guardian.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/upgrade-guardian.err</string>
+</dict>
+</plist>

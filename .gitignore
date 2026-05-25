@@ -1,0 +1,23 @@
+bin/
+dist/
+vendor/
+
+# Go
+*.test
+*.out
+coverage.html
+
+# Plugin
+plugin/node_modules/
+plugin/dist/
+plugin/.headlamp/
+
+# RAG
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets / kubeconfigs
+*.kubeconfig
+kubeconfig
+.env

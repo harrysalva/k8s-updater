@@ -1,0 +1,16 @@
+[Unit]
+Description=Upgrade Guardian — Kubernetes upgrade validation backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=__BIN_PATH__ --kubeconfig %h/.kube/config --addr 127.0.0.1:8090
+Restart=on-failure
+RestartSec=5s
+Environment=HOME=%h
+# Pluto database cache lives under ~/.cache/upgrade-guardian
+WorkingDirectory=%h
+
+[Install]
+WantedBy=default.target

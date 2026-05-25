@@ -1,0 +1,17 @@
+{
+  "name": "upgrade-guardian",
+  "version": "0.1.0",
+  "description": "Deterministic Kubernetes upgrade validation for Headlamp",
+  "scripts": {
+    "build": "headlamp-plugin build",
+    "start": "headlamp-plugin start",
+    "test": "headlamp-plugin test",
+    "format": "headlamp-plugin format",
+    "lint": "headlamp-plugin lint",
+    "tsc": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@kinvolk/headlamp-plugin": "^0.14.0",
+    "typescript": "^5.3.3"
+  }
+}
