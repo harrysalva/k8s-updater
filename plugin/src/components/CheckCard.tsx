@@ -34,6 +34,7 @@ const CHECKER_LABEL: Record<string, string> = {
   'vpc-cni-version':        'VPC CNI Version',
   'subnet-ip-availability': 'Subnet IP Availability',
   'irsa-oidc':              'IRSA / OIDC Provider',
+  'eks-addons':             'EKS Managed Add-ons',
 };
 
 const SEVERITY_BG: Record<Severity, string> = {
@@ -96,6 +97,8 @@ function formatMetaEntry(key: string, value: string): string {
     case 'note':                 return value;
     case 'group_vars_path':      return `inventory: ${value}`;
     case 'declared_version':     return value === '' ? '' : `declared: ${value}`;
+    // eks-addons
+    case 'addons_found':          return value === '0' ? 'no managed addons' : `${value} addons`;
     // irsa-oidc
     case 'oidc_issuer':           return value === 'none' ? 'no OIDC issuer' : '';
     case 'irsa_service_accounts': return value === '0' ? '' : `${value} IRSA SAs`;

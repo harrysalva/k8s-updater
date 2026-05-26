@@ -20,6 +20,7 @@ import (
 	"upgrade-guardian/internal/checks/nodes"
 	"upgrade-guardian/internal/checks/preflight"
 	"upgrade-guardian/internal/checks/provider"
+	eksaddons "upgrade-guardian/internal/checks/eks-addons"
 	"upgrade-guardian/internal/checks/irsa"
 	subnetips "upgrade-guardian/internal/checks/subnet-ips"
 	vpccni "upgrade-guardian/internal/checks/vpc-cni"
@@ -53,6 +54,7 @@ func New() *Engine {
 			vpccni.New(),
 			subnetips.New(),
 			irsa.New(),
+			eksaddons.New(),
 		},
 	}
 }

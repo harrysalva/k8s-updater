@@ -186,7 +186,7 @@ export function Dashboard() {
             startIcon={running ? <CircularProgress size={15} color="inherit" /> : undefined}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
-            {running ? 'Running checks…' : 'Run pre-upgrade scan (16 checkers)'}
+            {running ? 'Running checks…' : 'Run pre-upgrade scan (17 checkers)'}
           </Button>
           {report && !running && (
             <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto' }}>
@@ -218,7 +218,7 @@ export function Dashboard() {
                 </Alert>
               ) : (
                 <Alert severity="success" sx={{ py: 0.25, px: 1.5 }}>
-                  <strong>No blockers detected</strong> — by the 16 checkers in this scan
+                  <strong>No blockers detected</strong> — by the 17 checkers in this scan
                 </Alert>
               )}
             </Box>
@@ -228,7 +228,7 @@ export function Dashboard() {
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
             <Tooltip title="This scan covers 14 deterministic checks. It does not guarantee a safe upgrade — additional risks may exist outside its scope. See docs/COVERAGE.md for the full list of what is and is not detected.">
               <Chip
-                label="Coverage: 16 checkers active"
+                label="Coverage: 17 checkers active"
                 size="small"
                 variant="outlined"
                 color="default"

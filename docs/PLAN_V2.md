@@ -89,19 +89,18 @@ Archivo: `internal/checks/vpc-cni/checker.go`
 - [x] Tests unitarios con `fake.Clientset` (mock kube): outdated, sufficient, prefix delegation, not installed
 - [x] **Criterio de aceptación**: tests pasan, checker se registra correctamente
 
-### 2.2 Checker: Subnet IP availability (~3h)
+### 2.2 Checker: Subnet IP availability (~3h) ✅ 2026-05-25
 
 Archivo: `internal/checks/subnet-ips/checker.go`
 
-- [ ] Leer node annotations `vpc.amazonaws.com/node-subnet-id` para obtener subnets en uso
-- [ ] Llamar `ec2.DescribeSubnets(SubnetIds=[...])` via AWS SDK v2
-- [ ] Por subnet: calcular `AvailableIpAddressCount` vs `TotalIpCount` (de CIDR block)
-- [ ] Si alguna subnet tiene `AvailableIpAddressCount < 10%` → `high` finding
-- [ ] Si `< 5%` → `critical/blocker` (upgrade de nodo no podrá lanzar ENIs nuevos)
-- [ ] Incluir nombre de subnet, AZ, y CIDR en finding details
-- [ ] Si prefix delegation activo: multiplicar por factor 16 (cada IP hostea 16 pods)
-- [ ] Tests con mock de EC2 client
-- [ ] **Criterio de aceptación**: funciona sin acceso real a AWS usando mocks
+- [x] Leer node annotations `vpc.amazonaws.com/node-subnet-id` para obtener subnets en uso
+- [x] Llamar `ec2.DescribeSubnets(SubnetIds=[...])` via AWS SDK v2 con interfaz mockeable
+- [x] Por subnet: calcular `AvailableIpAddressCount / (2^hostbits - 5)` como porcentaje
+- [x] Si `< 10%` → `high`; Si `< 5%` → `critical/blocker`
+- [x] Incluir subnet ID, AZ, y CIDR en finding description
+- [x] Con prefix delegation activo: thresholds estrictos (10% → critical, 20% → high)
+- [x] 6 tests con `mockEC2` interface: critical, high, healthy, prefix delegation, sin anotaciones
+- [x] **Criterio de aceptación**: todos los tests pasan sin AWS real
 
 ### 2.3 Checker: IRSA / OIDC provider validation (~3h)
 
