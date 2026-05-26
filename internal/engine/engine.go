@@ -20,6 +20,7 @@ import (
 	"upgrade-guardian/internal/checks/nodes"
 	"upgrade-guardian/internal/checks/preflight"
 	"upgrade-guardian/internal/checks/provider"
+	vpccni "upgrade-guardian/internal/checks/vpc-cni"
 	"upgrade-guardian/internal/checks/webhooks"
 	"upgrade-guardian/internal/checks/workloads"
 	"upgrade-guardian/internal/detector"
@@ -47,6 +48,7 @@ func New() *Engine {
 			preflight.New(),
 			karpenter.New(),
 			istio.New(),
+			vpccni.New(),
 		},
 	}
 }
@@ -96,6 +98,17 @@ func (e *Engine) Run(ctx context.Context, cfg *checker.CheckConfig) (*checker.Re
 	}
 
 	wg.Wait()
+
+	// Inject staleness findings into the matching checker result.
+	stale := matrixStalenessFindings(time.Now())
+	for _, sf := range stale {
+		for i, r := range results {
+			if r.CheckerName == sf.CheckerName {
+				results[i].Findings = append(results[i].Findings, sf)
+				break
+			}
+		}
+	}
 
 	report := &checker.Report{
 		ClusterType:    ct,

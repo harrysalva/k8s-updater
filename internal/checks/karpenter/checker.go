@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -31,6 +32,10 @@ import (
 )
 
 const Name = "karpenter-compatibility"
+
+// MatrixLastVerified is the date the compatibilityMatrix was last checked against upstream.
+// The engine emits a staleness warning if this is too old.
+var MatrixLastVerified = time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC)
 
 // versionRange is a closed inclusive interval of supported k8s minor versions
 // for a Karpenter minor series.

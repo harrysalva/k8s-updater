@@ -31,6 +31,7 @@ const CHECKER_LABEL: Record<string, string> = {
   'preflight-dryrun':       'Pre-flight Dry-run',
   'karpenter-compatibility': 'Karpenter Compatibility',
   'istio-compatibility':    'Istio Compatibility',
+  'vpc-cni-version':        'VPC CNI Version',
 };
 
 const SEVERITY_BG: Record<Severity, string> = {
@@ -93,6 +94,14 @@ function formatMetaEntry(key: string, value: string): string {
     case 'note':                 return value;
     case 'group_vars_path':      return `inventory: ${value}`;
     case 'declared_version':     return value === '' ? '' : `declared: ${value}`;
+    // vpc-cni-version
+    case 'installed_version':    return `installed: ${value}`;
+    case 'minimum_required':     return `minimum: ${value}`;
+    case 'default_addon_version': return `eks default: ${value}`;
+    // etcd defrag
+    case 'db_size_mb':           return `db: ${value} MB`;
+    case 'db_size_in_use_mb':    return `in-use: ${value} MB`;
+    case 'frag_pct':             return value === '0' ? '' : `fragmentation: ${value}%`;
     // karpenter / istio compatibility
     case 'installed':            return value === 'false' ? 'not installed' : 'installed';
     case 'namespace':            return `ns: ${value}`;

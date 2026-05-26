@@ -70,7 +70,9 @@ func (c *Checker) Check(ctx context.Context, cfg *checker.CheckConfig) ([]checke
 		}}, map[string]string{"status": "tls_unavailable"}, nil
 	}
 
-	meta := map[string]string{"endpoints_checked": strconv.Itoa(len(endpoints))}
+	meta := map[string]string{
+		"endpoints_checked": strconv.Itoa(len(endpoints)),
+	}
 
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
@@ -105,9 +107,40 @@ func (c *Checker) Check(ctx context.Context, cfg *checker.CheckConfig) ([]checke
 			continue
 		}
 
-		// Warn if the etcd version is significantly older than the target k8s version
-		// (etcd version skew requirements apply).
-		_ = status
+		// Defragmentation check: high fragmentation increases disk pressure during upgrade.
+		if status.DbSize > 0 {
+			dbMB := status.DbSize / (1024 * 1024)
+			inUseMB := status.DbSizeInUse / (1024 * 1024)
+			fragPct := 100 * (status.DbSize - status.DbSizeInUse) / status.DbSize
+
+			meta["db_size_mb"] = strconv.FormatInt(dbMB, 10)
+			meta["db_size_in_use_mb"] = strconv.FormatInt(inUseMB, 10)
+			meta["frag_pct"] = strconv.FormatInt(fragPct, 10)
+
+			var sev checker.Severity
+			var msg string
+			switch {
+			case fragPct >= 50:
+				sev = checker.SeverityHigh
+				msg = fmt.Sprintf("etcd fragmentation is %d%% (db: %d MB, in-use: %d MB) — risk of NOSPACE alarm during upgrade", fragPct, dbMB, inUseMB)
+			case fragPct >= 30:
+				sev = checker.SeverityMedium
+				msg = fmt.Sprintf("etcd fragmentation is %d%% (db: %d MB, in-use: %d MB) — consider defragging before upgrade", fragPct, dbMB, inUseMB)
+			}
+			if msg != "" {
+				findings = append(findings, checker.Finding{
+					CheckerName: Name,
+					ClusterType: cfg.ClusterType,
+					Severity:    sev,
+					Blocker:     false,
+					Title:       fmt.Sprintf("etcd fragmentation at %d%% on %s", fragPct, ep),
+					Description: msg,
+					Remediation: "Run: ETCDCTL_API=3 etcdctl defrag --endpoints=" + ep + "\nThen verify: etcdctl endpoint status --endpoints=" + ep,
+					Source:      Name,
+					DocsURL:     "https://etcd.io/docs/latest/op-guide/maintenance/#defragmentation",
+				})
+			}
+		}
 	}
 
 	// Cluster-wide alarm check.

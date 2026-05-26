@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -28,6 +29,9 @@ import (
 )
 
 const Name = "istio-compatibility"
+
+// MatrixLastVerified is the date the compatibilityMatrix was last checked against upstream.
+var MatrixLastVerified = time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC)
 
 type versionRange struct {
 	minMinor, maxMinor int

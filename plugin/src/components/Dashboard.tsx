@@ -1,11 +1,13 @@
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import Divider from '@mui/material/Divider';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
+import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import { useEffect, useState } from 'react';
 import { K8s } from '@kinvolk/headlamp-plugin/lib';
@@ -184,7 +186,7 @@ export function Dashboard() {
             startIcon={running ? <CircularProgress size={15} color="inherit" /> : undefined}
             sx={{ textTransform: 'none', fontWeight: 600 }}
           >
-            {running ? 'Running checks…' : 'Run validation'}
+            {running ? 'Running checks…' : 'Run pre-upgrade scan (14 checkers)'}
           </Button>
           {report && !running && (
             <Typography variant="caption" color="text.disabled" sx={{ ml: 'auto' }}>
@@ -216,10 +218,23 @@ export function Dashboard() {
                 </Alert>
               ) : (
                 <Alert severity="success" sx={{ py: 0.25, px: 1.5 }}>
-                  <strong>Safe to upgrade</strong> — no blockers found
+                  <strong>No blockers detected</strong> — by the 14 checkers in this scan
                 </Alert>
               )}
             </Box>
+          </Box>
+
+          {/* Coverage disclaimer */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Tooltip title="This scan covers 14 deterministic checks. It does not guarantee a safe upgrade — additional risks may exist outside its scope. See docs/COVERAGE.md for the full list of what is and is not detected.">
+              <Chip
+                label="Coverage: 14 checkers active"
+                size="small"
+                variant="outlined"
+                color="default"
+                sx={{ fontWeight: 500, cursor: 'help' }}
+              />
+            </Tooltip>
           </Box>
 
           {/* Summary tiles */}
