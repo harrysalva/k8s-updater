@@ -33,6 +33,7 @@ const CHECKER_LABEL: Record<string, string> = {
   'istio-compatibility':    'Istio Compatibility',
   'vpc-cni-version':        'VPC CNI Version',
   'subnet-ip-availability': 'Subnet IP Availability',
+  'irsa-oidc':              'IRSA / OIDC Provider',
 };
 
 const SEVERITY_BG: Record<Severity, string> = {
@@ -95,6 +96,9 @@ function formatMetaEntry(key: string, value: string): string {
     case 'note':                 return value;
     case 'group_vars_path':      return `inventory: ${value}`;
     case 'declared_version':     return value === '' ? '' : `declared: ${value}`;
+    // irsa-oidc
+    case 'oidc_issuer':           return value === 'none' ? 'no OIDC issuer' : '';
+    case 'irsa_service_accounts': return value === '0' ? '' : `${value} IRSA SAs`;
     // subnet-ip-availability
     case 'subnets_checked':      return `${value} subnets`;
     case 'prefix_delegation':    return value === 'true' ? 'prefix delegation on' : '';

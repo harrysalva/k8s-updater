@@ -20,6 +20,7 @@ import (
 	"upgrade-guardian/internal/checks/nodes"
 	"upgrade-guardian/internal/checks/preflight"
 	"upgrade-guardian/internal/checks/provider"
+	"upgrade-guardian/internal/checks/irsa"
 	subnetips "upgrade-guardian/internal/checks/subnet-ips"
 	vpccni "upgrade-guardian/internal/checks/vpc-cni"
 	"upgrade-guardian/internal/checks/webhooks"
@@ -51,6 +52,7 @@ func New() *Engine {
 			istio.New(),
 			vpccni.New(),
 			subnetips.New(),
+			irsa.New(),
 		},
 	}
 }
