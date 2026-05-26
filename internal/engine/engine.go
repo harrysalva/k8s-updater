@@ -20,6 +20,7 @@ import (
 	"upgrade-guardian/internal/checks/nodes"
 	"upgrade-guardian/internal/checks/preflight"
 	"upgrade-guardian/internal/checks/provider"
+	subnetips "upgrade-guardian/internal/checks/subnet-ips"
 	vpccni "upgrade-guardian/internal/checks/vpc-cni"
 	"upgrade-guardian/internal/checks/webhooks"
 	"upgrade-guardian/internal/checks/workloads"
@@ -49,6 +50,7 @@ func New() *Engine {
 			karpenter.New(),
 			istio.New(),
 			vpccni.New(),
+			subnetips.New(),
 		},
 	}
 }

@@ -32,6 +32,7 @@ const CHECKER_LABEL: Record<string, string> = {
   'karpenter-compatibility': 'Karpenter Compatibility',
   'istio-compatibility':    'Istio Compatibility',
   'vpc-cni-version':        'VPC CNI Version',
+  'subnet-ip-availability': 'Subnet IP Availability',
 };
 
 const SEVERITY_BG: Record<Severity, string> = {
@@ -94,6 +95,9 @@ function formatMetaEntry(key: string, value: string): string {
     case 'note':                 return value;
     case 'group_vars_path':      return `inventory: ${value}`;
     case 'declared_version':     return value === '' ? '' : `declared: ${value}`;
+    // subnet-ip-availability
+    case 'subnets_checked':      return `${value} subnets`;
+    case 'prefix_delegation':    return value === 'true' ? 'prefix delegation on' : '';
     // vpc-cni-version
     case 'installed_version':    return `installed: ${value}`;
     case 'minimum_required':     return `minimum: ${value}`;
