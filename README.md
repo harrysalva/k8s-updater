@@ -6,7 +6,7 @@
 
 [![Go Version](https://img.shields.io/badge/go-1.26-blue)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-internal-orange)](#license)
-[![Checkers](https://img.shields.io/badge/checkers-13-green)](#checkers-disponibles)
+[![Checkers](https://img.shields.io/badge/checkers-17-green)](#checkers-disponibles)
 [![Platforms](https://img.shields.io/badge/platforms-linux%20%7C%20macOS-lightgrey)](#install)
 
 </div>
@@ -89,15 +89,15 @@ Eso es Upgrade Guardian.
 ┌─────────────────────────────────────────────────────────┐
 │  Backend Go (:8090)                                      │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │  13 checkers en paralelo                         │   │
+│  │  17 checkers en paralelo                         │   │
 │  │  ── Pluto (deprecated APIs)                      │   │
 │  │  ── Nova (Helm kubeVersion)                      │   │
 │  │  ── kubeconform (CRD schemas)                    │   │
 │  │  ── crypto/tls (control plane certs)             │   │
 │  │  ── etcd client v3                               │   │
 │  │  ── client-go (nodes, PDBs, webhooks, capacity)  │   │
-│  │  ── AWS SDK v2 (EKS Insights)                    │   │
-│  │  ── matrices verificadas (Karpenter, Istio)      │   │
+│  │  ── AWS SDK v2 (EKS Insights, add-ons, EC2)      │   │
+│  │  ── matrices verificadas (Karpenter, Istio, VPC CNI) │   │
 │  └─────────────────────────────────────────────────┘   │
 └──────────┬──────────────────────────────────────────────┘
            │
@@ -118,7 +118,7 @@ Cada checker es **independiente** y corre en una goroutine. Un checker fallido n
 
 ## Checkers disponibles
 
-Trece checkers organizados en cinco categorías:
+Diecisiete checkers organizados en seis categorías:
 
 ### Compatibilidad de APIs (3)
 
@@ -135,7 +135,7 @@ Trece checkers organizados en cinco categorías:
 | `control-plane` | ¿API server / certs / componentes están sanos? | HTTPS + `crypto/tls` |
 | `etcd-health` | ¿etcd alcanzable, sin alarmas NOSPACE/CORRUPT? | etcd client v3 |
 | `node-health` | ¿Conditions OK + kubelet skew ≤ 2 minors? | client-go + NPD |
-| `provider-compatibility` | ¿CNI / EKS add-ons / Kubespray inventory compatibles? | DaemonSet detect + AWS SDK |
+| `provider-compatibility` | ¿CNI compatible + kube-proxy skew + ingress-nginx retirement? | DaemonSet detect + matriz CNI |
 
 ### Resiliencia de workloads (2)
 
@@ -157,6 +157,15 @@ Trece checkers organizados en cinco categorías:
 |---|---|---|
 | `karpenter-compatibility` | ¿Karpenter instalado soporta target k8s? | Matrix verificada (LAST VERIFIED: 2026-05-25) |
 | `istio-compatibility` | ¿Istio soporta target + sigue en upstream support? | Matrix verificada |
+
+### EKS-específicos (4)
+
+| Checker | Pregunta | Herramienta |
+|---|---|---|
+| `vpc-cni-version` | ¿aws-node es compatible con target k8s + prefix delegation OK? | DaemonSet + AWS SDK + matrix (LAST VERIFIED: 2026-06-05) |
+| `subnet-ip-availability` | ¿Las subnets tienen IPs libres para upgrade rolling? | EC2 `DescribeSubnets` |
+| `irsa-oidc` | ¿OIDC registrado en IAM + trust policies correctas? | IAM + EKS `DescribeCluster` |
+| `eks-addons` | ¿Managed add-ons compatibles con target k8s? | EKS `DescribeAddonVersions` (live) |
 
 Cada finding incluye **título, descripción, remediation con comando concreto, link a docs oficiales, severidad, blocker flag, y recurso afectado**.
 
@@ -313,12 +322,15 @@ Las matrices están **hardcoded** en código con un comentario `LAST VERIFIED: Y
 # 1. Hacer WebFetch (en Claude) sobre las URLs upstream
 #    https://karpenter.sh/docs/upgrading/compatibility/
 #    https://istio.io/latest/docs/releases/supported-releases/
+#    https://docs.aws.amazon.com/eks/latest/userguide/managing-vpc-cni.html
 
-# 2. Editar internal/checks/{karpenter,istio}/checker.go → compatibilityMatrix
+# 2. Editar internal/checks/{karpenter,istio,vpc-cni}/checker.go → matrix
 # 3. Bumpear LAST VERIFIED
 # 4. Verificar
-go test ./internal/checks/karpenter ./internal/checks/istio
+go test ./internal/checks/karpenter ./internal/checks/istio ./internal/checks/vpc-cni
 ```
+
+La **staleness engine** (`engine/matrix_staleness.go`) emite warnings automáticos en el report si cualquiera de las tres matrices supera 180 días desde `LAST VERIFIED`.
 
 **Por qué manual y no scraping automático**: el HTML de las páginas upstream cambia con cada redesign; un parser HTML se rompe en silencio. Refresh manual cada ~6 meses es trivial y verificable.
 
@@ -326,15 +338,15 @@ go test ./internal/checks/karpenter ./internal/checks/istio
 
 ## Comparación con alternativas
 
-| Tool | APIs deprecated | Helm | CRDs | Control plane | Nodes | PDBs | Webhooks | Capacity | Karpenter | Istio | EKS Insights |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| **Upgrade Guardian** | ✅ live scan | ✅ Nova | ✅ kubeconform | ✅ | ✅ +skew | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `pluto` (standalone) | ✅ static only | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `kube-no-trouble` | ✅ live | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `kubent` | ✅ live | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `popeye` / `polaris` | ❌ | ❌ | ❌ | partial | ✅ | ✅ | partial | ❌ | ❌ | ❌ | ❌ |
-| `eksctl upgrade --dry-run` | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| Headlamp UI nativa | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Tool | APIs deprecated | Helm | CRDs | Control plane | Nodes | PDBs | Webhooks | Capacity | Karpenter | Istio | EKS Insights | VPC CNI | Subnets | IRSA | EKS add-ons |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Upgrade Guardian** | ✅ live scan | ✅ Nova | ✅ kubeconform | ✅ | ✅ +skew | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `pluto` (standalone) | ✅ static only | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `kube-no-trouble` | ✅ live | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `kubent` | ✅ live | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `popeye` / `polaris` | ❌ | ❌ | ❌ | partial | ✅ | ✅ | partial | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `eksctl upgrade --dry-run` | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Headlamp UI nativa | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 Las herramientas existentes cubren slices del problema. Upgrade Guardian no las reemplaza sino que las **orquesta** (Pluto y Nova están embebidos directamente como librerías Go).
 
@@ -357,7 +369,7 @@ k8s-updater/
 │   ├── npd/                        # node-problem-detector installer
 │   ├── rag/                        # LLM interface (NoopRAG por ahora)
 │   ├── cli/                        # Cliente HTTP + formatters
-│   └── checks/                     # Los 13 checkers (uno por subdirectorio)
+│   └── checks/                     # Los 17 checkers (uno por subdirectorio)
 ├── plugin/                         # Headlamp plugin (React + TypeScript + MUI)
 ├── scripts/                        # release.sh, install.sh, systemd, launchd
 ├── docs/                           # ARCHITECTURE, INSTALL, CLI, ADRs
@@ -427,7 +439,7 @@ func TestMatrixIntegrity(t *testing.T) {
 |---|---|---|
 | Alta | RAG real con SQLite-vec + bge-m3 + Qwen2.5-Coder-32B | Pendiente — interface lista, `NoopRAG` placeholder |
 | Alta | SSH executor para `kubeadm upgrade plan` real | Pendiente — hoy solo informativo |
-| Media | Matrices para cert-manager, external-dns, ingress-nginx | Pendiente |
+| Media | Matrices para cert-manager, external-dns | Pendiente |
 | Media | GitHub Actions release pipeline (auto-publish a Releases on tag) | Pendiente |
 | Media | Tests de integración con clúster Kind ephemeral | Pendiente |
 | Baja | Docker image + Helm chart para deploy in-cluster | Pendiente — actualmente solo binario standalone |
@@ -466,7 +478,7 @@ Más detalle en [`docs/adr/`](docs/adr/).
 
 | Componente | Estado |
 |---|---|
-| Backend (13 checkers) | ✅ Production-ready |
+| Backend (17 checkers) | ✅ Production-ready |
 | CLI standalone | ✅ Production-ready |
 | Headlamp plugin | ✅ Production-ready |
 | Multi-arch packaging | ✅ linux/darwin × amd64/arm64 |

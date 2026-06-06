@@ -2,7 +2,7 @@
 
 ## Propósito
 
-Upgrade Guardian es una herramienta de validación determinista para upgrades de Kubernetes. Dado un clúster live y un par de versiones (`from` → `to`), ejecuta 13 checkers en paralelo, cada uno respaldado por herramientas de análisis estático (Pluto, Nova, kubeconform), llamadas directas a la API de Kubernetes, o matrices de compatibilidad verificadas contra documentación upstream. Devuelve un informe que indica si el upgrade está bloqueado o es seguro.
+Upgrade Guardian es una herramienta de validación determinista para upgrades de Kubernetes. Dado un clúster live y un par de versiones (`from` → `to`), ejecuta 17 checkers en paralelo, cada uno respaldado por herramientas de análisis estático (Pluto, Nova, kubeconform), llamadas directas a la API de Kubernetes, o matrices de compatibilidad verificadas contra documentación upstream. Devuelve un informe que indica si el upgrade está bloqueado o es seguro.
 
 No es un producto comercial. Es una **herramienta interna de supervivencia operativa**: su único objetivo es prevenir desastres durante upgrades y garantizar la paz mental del operador.
 
@@ -26,7 +26,7 @@ Estos mandatos derivan del diseño original y no pueden ser modificados sin un A
 
 ---
 
-## Estado actual — 13 checkers
+## Estado actual — 17 checkers
 
 | # | Pregunta | Checker | Estado |
 |---|---|---|---|
@@ -43,6 +43,10 @@ Estos mandatos derivan del diseño original y no pueden ser modificados sin un A
 | 11 | ¿Dry-run de la operación de upgrade pasa? | `preflight-dryrun` | ✅ (EKS via Insights API, kubeadm/Kubespray informativo) |
 | 12 | ¿Karpenter soporta el target k8s? | `karpenter-compatibility` | ✅ |
 | 13 | ¿Istio soporta el target k8s? | `istio-compatibility` | ✅ |
+| 14 | ¿VPC CNI es compatible con el target k8s? | `vpc-cni-version` | ✅ (solo EKS) |
+| 15 | ¿Las subnets tienen IPs suficientes para el upgrade? | `subnet-ip-availability` | ✅ (solo EKS) |
+| 16 | ¿IRSA/OIDC está correctamente configurado? | `irsa-oidc` | ✅ (solo EKS) |
+| 17 | ¿Los managed add-ons EKS son compatibles con el target? | `eks-addons` | ✅ (solo EKS, live via AWS API) |
 
 ---
 
@@ -106,7 +110,11 @@ k8s-updater/
 │       │   ├── kubeadm.go
 │       │   └── kubespray.go
 │       ├── karpenter/checker.go    # Compatibility matrix (verified)
-│       └── istio/checker.go        # Compatibility matrix + upstream support status
+│       ├── istio/checker.go        # Compatibility matrix + upstream support status
+│       ├── vpc-cni/checker.go      # VPC CNI version compat + prefix delegation (EKS)
+│       ├── subnet-ips/checker.go   # Subnet IP availability via EC2 API (EKS)
+│       ├── irsa/checker.go         # OIDC provider + ServiceAccount trust policy (EKS)
+│       └── eks-addons/checker.go   # Managed add-on compat via DescribeAddonVersions (EKS)
 ├── plugin/
 │   ├── src/
 │   │   ├── index.tsx               # registerSidebarEntry + registerRoute
@@ -168,7 +176,11 @@ Go HTTP Server (:8090)
         ├─[goroutine]─ capacity.Check()
         ├─[goroutine]─ preflight.Check()
         ├─[goroutine]─ karpenter.Check()
-        └─[goroutine]─ istio.Check()
+        ├─[goroutine]─ istio.Check()
+        ├─[goroutine]─ vpccni.Check()
+        ├─[goroutine]─ subnetips.Check()
+        ├─[goroutine]─ irsa.Check()
+        └─[goroutine]─ eksaddons.Check()
                 │
                 ▼
            Report { blocker: bool, results: []CheckResult }
@@ -261,9 +273,13 @@ Si NPD no está desplegado, finding medium con botón one-click de instalación.
 
 Tres rutas según clúster:
 
-- **Upstream**: detecta CNI por DaemonSet name. Weave Net (EOL 2023) siempre blocker.
-- **EKS**: `ListAddons` + `DescribeAddonVersions`.
-- **Kubespray**: parsea `group_vars/`.
+- **Upstream**: detecta CNI por DaemonSet name en `kube-system`, `calico-system`, `cilium`, `kube-flannel`. Compara versión CNI contra `cniMaxK8sMinor` (Calico, Cilium, Flannel). Weave Net (EOL 2023) siempre blocker. Kindnet (Kind) siempre info/safe.
+- **EKS**: `ListAddons` + `DescribeAddonVersions` para managed add-ons. También verifica VPC CNI si está presente como DaemonSet no gestionado.
+- **Kubespray**: parsea `group_vars/all/all.yml` y `k8s_cluster/k8s-cluster.yml` para extraer `kube_network_plugin` y versión; fallback a detección live si no se puede parsear.
+
+Checks adicionales (todas las rutas):
+- **kube-proxy skew**: compara versión del DaemonSet `kube-proxy` con la apiserver. Skew > 1 minor → high.
+- **ingress-nginx retirement**: detecta el DaemonSet/Deployment `ingress-nginx`. A partir del 2026-03-24 (fecha de mantenimiento-only) → high. Antes de esa fecha → medium.
 
 **Meta**: `cni` o `addons_checked`.
 
@@ -342,6 +358,54 @@ Doble validación: compatibilidad con target k8s + status de upstream support (E
 
 **Meta**: `installed`, `version`, `supported_range`, `upstream_supported`, `recommended_upgrade`.
 
+### 14. `vpc-cni-version`
+
+**Solo EKS.** Valida que el `aws-node` DaemonSet sea compatible con el target k8s y verifica configuración de prefix delegation.
+
+Tres verificaciones:
+1. **Compatibilidad de versión**: compara `aws-node` instalado contra `minVersionByK8sMinor` (tabla estática LAST VERIFIED: 2026-06-05). Si está por debajo del mínimo → critical+blocker.
+2. **Prefix delegation**: si `ENABLE_PREFIX_DELEGATION=true` en el ConfigMap `amazon-vpc-cni` y la versión es < 1.11.0 → critical+blocker.
+3. **AWS API (best-effort)**: `DescribeAddonVersions` para `vpc-cni` con el target k8s minor. Si la versión instalada está por detrás del default → medium (no blocker).
+
+La tabla estática cubre k8s 1.25–1.36. La staleness engine emite warning si `MatrixLastVerified` supera 180 días.
+
+**Meta**: `installed_version`, `minimum_required`, `default_addon_version`.
+
+### 15. `subnet-ip-availability`
+
+**Solo EKS.** Verifica que las subnets usadas por los nodos tengan IPs libres suficientes para un upgrade rolling (drain + replace de cada nodo).
+
+- Lee el annotation `vpc.amazonaws.com/node-subnet-id` de cada nodo para obtener los IDs de subnet únicos.
+- Llama `DescribeSubnets` (EC2 API) para obtener `AvailableIpAddressCount` y CIDR de cada subnet.
+- Calcula porcentaje disponible (AWS reserva 5 IPs por subnet).
+- Con prefix delegation activo (`ENABLE_PREFIX_DELEGATION=true`), aplica umbrales más estrictos (bloquea < 10%, alerta < 20% vs. < 5% / < 10% sin PD).
+
+**Meta**: `subnets_checked`, `prefix_delegation`.
+
+### 16. `irsa-oidc`
+
+**Solo EKS.** Valida que la configuración IRSA (IAM Roles for Service Accounts) sea correcta antes del upgrade. Una mala configuración no impide el upgrade en sí, pero deja pods sin credenciales AWS inmediatamente después.
+
+Tres pasos:
+1. `DescribeCluster` para obtener el OIDC issuer URL del clúster.
+2. `ListOpenIDConnectProviders` para verificar que el issuer esté registrado en IAM → critical+blocker si falta.
+3. Lista todos los ServiceAccounts con annotation `eks.amazonaws.com/role-arn`; para cada uno, `GetRole` y verifica que el trust policy referencie el issuer del clúster → high si no coincide.
+
+**Meta**: `oidc_issuer`, `irsa_service_accounts`.
+
+### 17. `eks-addons`
+
+**Solo EKS.** Verifica compatibilidad de todos los managed add-ons con el target k8s usando `DescribeAddonVersions` (datos en vivo desde AWS, sin matriz estática).
+
+- `ListAddons` para obtener todos los add-ons del clúster.
+- Para cada add-on: `DescribeAddon` (versión instalada) + `DescribeAddonVersions` (versiones compatibles con target k8s).
+- Si la versión instalada **no está** en la lista de compatibles → critical+blocker con comando de actualización.
+- Si es compatible pero no es la default más reciente → info (recomendación no bloqueante).
+
+Cubre `vpc-cni`, `coredns`, `kube-proxy`, `aws-ebs-csi-driver`, `aws-efs-csi-driver` y cualquier otro add-on gestionado presente.
+
+**Meta**: `addons_found`.
+
 ---
 
 ## Modelo de datos
@@ -404,6 +468,8 @@ GET  /api/v1/check?from=1.34&to=1.35&context=<ctx>
      Headers opcionales:
        X-Cluster-Name, X-AWS-Region          (EKS)
        X-Kubespray-Inventory, X-Kubespray-GroupVars
+     Nota: si no se envían X-Cluster-Name/X-AWS-Region, el handler intenta
+     auto-detectar EKS desde el ARN del contexto kubeconfig (arn:aws:eks:<region>:<account>:cluster/<name>).
      → Report { current_version, target_version, blocker, timestamp, results }
 
 POST /api/v1/postcheck
@@ -443,6 +509,8 @@ Tres niveles de base de datos por checker:
 | **kubeconform** | Runtime (schemas desde internet) | Automática |
 | **Karpenter matrix** | Estática en código | Manual: WebFetch + edit + bump `LAST VERIFIED` |
 | **Istio matrix** | Estática en código | Manual: WebFetch + edit + bump `LAST VERIFIED` |
+| **VPC CNI matrix** | Estática en código | Manual: WebFetch EKS addon table + edit + bump `LAST VERIFIED` |
+| **EKS add-ons compat** | Live via AWS API | Sin refresh manual — `DescribeAddonVersions` es siempre actual |
 
 ### Pluto cache: lookup order
 
@@ -456,16 +524,19 @@ Tres niveles de base de datos por checker:
 2. Si falla (red bloqueada, 404): lee de `$GOMODCACHE/github.com/fairwindsops/pluto/v5@<ver>/versions.yaml`
 3. Escribe el resultado al cache file. UI muestra "offline — used bundled copy" si vino del module cache.
 
-### Refrescar matrices Karpenter/Istio
+### Refrescar matrices Karpenter/Istio/VPC CNI
 
 Cuando salga una nueva versión upstream:
 
 ```
 WebFetch https://karpenter.sh/docs/upgrading/compatibility/
 WebFetch https://istio.io/latest/docs/releases/supported-releases/
+WebFetch https://docs.aws.amazon.com/eks/latest/userguide/managing-vpc-cni.html
 ```
 
-Editar `compatibilityMatrix` en los respectivos `checker.go`, bumpear `LAST VERIFIED`, correr `go test ./internal/checks/karpenter ./internal/checks/istio`.
+Editar la matriz en el `checker.go` correspondiente, bumpear `LAST VERIFIED`, correr `go test ./internal/checks/karpenter ./internal/checks/istio ./internal/checks/vpc-cni`.
+
+La staleness engine (`engine/matrix_staleness.go`) emite warning automático si cualquiera de las tres matrices supera 180 días sin refresh.
 
 ---
 
