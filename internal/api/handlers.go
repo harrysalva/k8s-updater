@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -90,12 +91,14 @@ func (h *Handler) RunChecks(w http.ResponseWriter, r *http.Request) {
 		RestConfig:     restConfig,
 	}
 
-	// Propagate EKS / Kubespray config from request headers if provided.
+	// Propagate EKS config: prefer explicit headers, then auto-detect from kubeconfig ARN.
 	if cluster := r.Header.Get("X-Cluster-Name"); cluster != "" {
 		cfg.EKSConfig = &checker.EKSConfig{
 			ClusterName: cluster,
 			Region:      r.Header.Get("X-AWS-Region"),
 		}
+	} else if eksConfig := h.eksConfigFromContext(r.URL.Query().Get("context")); eksConfig != nil {
+		cfg.EKSConfig = eksConfig
 	}
 	if inv := r.Header.Get("X-Kubespray-Inventory"); inv != "" {
 		cfg.KubesprayConfig = &checker.KubesprayConfig{
@@ -260,4 +263,55 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// eksConfigFromContext auto-detects EKS cluster name and region from the kubeconfig.
+// It resolves short context aliases (e.g. "xtrim-dev") to their cluster ARN entry,
+// so EKS-specific checkers run without requiring explicit X-Cluster-Name headers.
+func (h *Handler) eksConfigFromContext(contextName string) *checker.EKSConfig {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if h.kubeconfigPath != "" {
+		loadingRules.ExplicitPath = h.kubeconfigPath
+	}
+	rawCfg, err := loadingRules.Load()
+	if err != nil {
+		return nil
+	}
+
+	name := contextName
+	if name == "" {
+		name = rawCfg.CurrentContext
+	}
+
+	// Case 1: context name itself is the ARN (aws eks update-kubeconfig default).
+	if cfg := parseEKSARN(name); cfg != nil {
+		return cfg
+	}
+
+	// Case 2: short alias — resolve through the kubeconfig cluster entry.
+	if ctx, ok := rawCfg.Contexts[name]; ok {
+		if cfg := parseEKSARN(ctx.Cluster); cfg != nil {
+			return cfg
+		}
+	}
+	return nil
+}
+
+// parseEKSARN extracts cluster name, region, and account ID from an EKS cluster ARN.
+// Expected format: arn:aws:eks:<region>:<account-id>:cluster/<cluster-name>
+func parseEKSARN(arn string) *checker.EKSConfig {
+	parts := strings.SplitN(arn, ":", 6)
+	if len(parts) != 6 || parts[0] != "arn" || parts[2] != "eks" {
+		return nil
+	}
+	region := parts[3]
+	clusterName := strings.TrimPrefix(parts[5], "cluster/")
+	if region == "" || clusterName == "" || strings.Contains(clusterName, "/") {
+		return nil
+	}
+	return &checker.EKSConfig{
+		ClusterName: clusterName,
+		Region:      region,
+		AccountID:   parts[4],
+	}
 }

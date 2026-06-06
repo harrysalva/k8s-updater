@@ -29,7 +29,7 @@ import (
 const Name = "vpc-cni-version"
 
 // MatrixLastVerified is the date the minVersionByK8sMinor table was last checked against upstream.
-var MatrixLastVerified = time.Date(2026, 5, 25, 0, 0, 0, 0, time.UTC)
+var MatrixLastVerified = time.Date(2026, 6, 5, 0, 0, 0, 0, time.UTC)
 
 // minVersionByK8sMinor is the minimum aws-node version required for each k8s minor.
 // Below this version, the VPC CNI may fail to attach ENIs after the k8s upgrade.
@@ -43,6 +43,10 @@ var minVersionByK8sMinor = map[int]string{
 	30: "1.18.1",
 	31: "1.19.0",
 	32: "1.19.0",
+	33: "1.20.0",
+	34: "1.20.0",
+	35: "1.20.0",
+	36: "1.21.0",
 }
 
 // prefixDelegationMinVersion is the minimum vpc-cni version that supports

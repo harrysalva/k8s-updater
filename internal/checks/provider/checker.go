@@ -108,20 +108,24 @@ func (c *Checker) Name() string { return Name }
 func (c *Checker) Supports(_ checker.ClusterType) bool { return true }
 
 func (c *Checker) Check(ctx context.Context, cfg *checker.CheckConfig) ([]checker.Finding, map[string]string, error) {
+	var findings []checker.Finding
+	var meta map[string]string
+
 	switch cfg.ClusterType {
 	case checker.ClusterTypeEKS:
-		findings, meta := c.checkEKS(ctx, cfg)
-		return findings, meta, nil
+		findings, meta = c.checkEKS(ctx, cfg)
 	case checker.ClusterTypeKubespray:
-		findings, meta, err := c.checkKubespray(ctx, cfg)
+		var err error
+		findings, meta, err = c.checkKubespray(ctx, cfg)
 		if err != nil {
 			return nil, nil, err
 		}
-		return findings, meta, nil
 	default:
-		findings, meta := c.checkUpstream(ctx, cfg)
-		return findings, meta, nil
+		findings, meta = c.checkUpstream(ctx, cfg)
 	}
+
+	findings = append(findings, c.checkIngressNginxRetirement(ctx, cfg)...)
+	return findings, meta, nil
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -586,6 +590,71 @@ func cniDocsURL(kind cniKind) string {
 		return "https://github.com/flannel-io/flannel#requirements"
 	default:
 		return "https://kubernetes.io/docs/concepts/cluster-administration/networking/"
+	}
+}
+
+// ingressNginxRetirementDate is when the Ingress NGINX project moved to maintenance-only mode.
+// Source: https://kubernetes.io/blog/2025/01/13/gateway-api-ga/ and upstream project announcements.
+var ingressNginxRetirementDate = time.Date(2026, 3, 24, 0, 0, 0, 0, time.UTC)
+
+// checkIngressNginxRetirement emits a finding if ingress-nginx is installed after its retirement date.
+// Retirement means the project entered maintenance-only mode; migration to Gateway API is recommended.
+func (c *Checker) checkIngressNginxRetirement(ctx context.Context, cfg *checker.CheckConfig) []checker.Finding {
+	namespacesToSearch := []string{"ingress-nginx", "kube-system", "default"}
+	for _, ns := range namespacesToSearch {
+		// Check DaemonSets first (common in bare-metal / on-prem clusters).
+		dsList, err := cfg.KubeClient.AppsV1().DaemonSets(ns).List(ctx, metav1.ListOptions{})
+		if err == nil {
+			for _, ds := range dsList.Items {
+				if strings.Contains(ds.Name, "ingress-nginx") {
+					img := ""
+					if len(ds.Spec.Template.Spec.Containers) > 0 {
+						img = ds.Spec.Template.Spec.Containers[0].Image
+					}
+					return []checker.Finding{ingressNginxFinding(cfg, "DaemonSet", ds.Name, ns, img)}
+				}
+			}
+		}
+		// Check Deployments (common in cloud / managed clusters).
+		deployList, err := cfg.KubeClient.AppsV1().Deployments(ns).List(ctx, metav1.ListOptions{})
+		if err == nil {
+			for _, deploy := range deployList.Items {
+				if strings.Contains(deploy.Name, "ingress-nginx") {
+					img := ""
+					if len(deploy.Spec.Template.Spec.Containers) > 0 {
+						img = deploy.Spec.Template.Spec.Containers[0].Image
+					}
+					return []checker.Finding{ingressNginxFinding(cfg, "Deployment", deploy.Name, ns, img)}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func ingressNginxFinding(cfg *checker.CheckConfig, kind, name, ns, image string) checker.Finding {
+	retired := time.Now().After(ingressNginxRetirementDate)
+	severity := checker.SeverityHigh
+	title := fmt.Sprintf("ingress-nginx detected — project entered maintenance mode on 2026-03-24")
+	desc := fmt.Sprintf(
+		"%s %s/%s (image: %s) is running. The ingress-nginx project entered maintenance-only mode on "+
+			"2026-03-24. No new features will be developed and security patches may be delayed. "+
+			"Migration to Gateway API is the recommended path.", kind, ns, name, image)
+	if !retired {
+		severity = checker.SeverityMedium
+		title = fmt.Sprintf("ingress-nginx detected — project retires 2026-03-24, plan migration")
+	}
+	return checker.Finding{
+		CheckerName: Name,
+		ClusterType: cfg.ClusterType,
+		Severity:    severity,
+		Blocker:     false,
+		Title:       title,
+		Description: desc,
+		Remediation: "Migrate to Gateway API (HTTPRoute + GatewayClass). See: https://gateway-api.sigs.k8s.io/guides/migrating-from-ingress/",
+		Resource:    &checker.Resource{Kind: kind, Name: name, Namespace: ns},
+		Source:      Name,
+		DocsURL:     "https://github.com/kubernetes/ingress-nginx#readme",
 	}
 }
 
